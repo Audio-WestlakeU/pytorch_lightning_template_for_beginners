@@ -1,0 +1,6 @@
+jsonargparse[signatures,urls]>=4.3.1
+torchmetrics[audio]
+omegaconf
+pytorch-lightning
+torch>=1.10.0
+rich
