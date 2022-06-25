@@ -160,35 +160,6 @@ class MyCLI(LightningCLI):
             model_name = str(self.model_class).split('\'')[1].split('.')[-1]
             self.trainer.logger = TensorBoardLogger('logs/', name=model_name, default_hp_metric=False)
 
-    def after_fit(self):
-        # 训练结束后，会被执行。下面代码实现的功能是将测试时的log目录设置为/home/zhangsan/logs/MyModel/version_X/epochN/version_Y
-        if self.trainer.limit_test_batches is not None and self.trainer.limit_test_batches <= 0:
-            return
-        # test
-        torch.set_num_interop_threads(5)
-        torch.set_num_threads(5)
-        resume_from_checkpoint = self.trainer.checkpoint_callback.best_model_path
-        if resume_from_checkpoint is None or resume_from_checkpoint == "":
-            if self.trainer.is_global_zero:
-                print("no checkpoint found, so test is ignored")
-            return
-        epoch = os.path.basename(resume_from_checkpoint).split('_')[0]
-        write_dir = os.path.dirname(os.path.dirname(resume_from_checkpoint))
-        exp_save_path = os.path.normpath(write_dir + '/' + epoch)
-
-        # comment the following code to disable the test after fit
-        import torch.distributed as dist
-        if self.trainer.is_global_zero:
-            self.trainer.logger = TensorBoardLogger(exp_save_path, name="", default_hp_metric=False)
-            versions = [self.trainer.logger.version]
-        else:
-            versions = [None]
-        if self.trainer.world_size > 1:
-            dist.broadcast_object_list(versions)
-            self.trainer.logger = TensorBoardLogger(exp_save_path, name="", version=versions[0], default_hp_metric=False)
-        self.trainer.test(ckpt_path=resume_from_checkpoint, datamodule=self.datamodule)
-        self.after_test()
-
     def before_test(self):
         # 测试开始前，会被执行。下面代码实现的功能是将测试时的log目录设置为/home/zhangsan/logs/MyModel/version_X/epochN/version_Y
         torch.set_num_interop_threads(5)
