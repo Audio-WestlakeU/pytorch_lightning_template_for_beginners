@@ -1,7 +1,8 @@
 import os
 
 os.environ['TORCH_CUDNN_V8_API_ENABLED'] = '1'  # 允许使用BF16精度进行训练。enable bf16 precision in pytorch 1.12, see https://github.com/Lightning-AI/lightning/issues/11933#issuecomment-1181590004
-os.environ["OMP_NUM_THREADS"] = str(8)  # 限制进程数量，放在import torch和numpy之前。不加会导致程序占用特别多的CPU资源，使得服务器变卡。limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
+os.environ["OMP_NUM_THREADS"] = str(
+    8)  # 限制进程数量，放在import torch和numpy之前。不加会导致程序占用特别多的CPU资源，使得服务器变卡。limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
 
 from typing import Tuple
 
@@ -19,6 +20,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from utils import MyRichProgressBar as RichProgressBar
 from utils import MyLogger as TensorBoardLogger
+from utils import tag_and_log_git_status
 
 
 class RandomDataset(Dataset):
@@ -78,12 +80,28 @@ class MyModel(LightningModule):
     LightningModule的相关资料：https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html
     """
 
-    def __init__(self, arch: MyArch = lazy_instance(MyArch)):
+    def __init__(self, arch: MyArch = lazy_instance(MyArch), exp_name: str = "exp"):
         super().__init__()
         self.arch = arch
 
+        # save all the parameters to self.hparams
+        self.save_hyperparameters(ignore=['arch'])
+
     def forward(self, x):
         return self.arch(x)
+
+    def on_train_start(self):
+        """Called by PytorchLightning automatically at the start of training"""
+        if self.current_epoch == 0:
+            if self.trainer.is_global_zero and hasattr(self.logger, 'log_dir') and 'notag' not in self.hparams.exp_name:
+                # add git tags for better change tracking
+                # note: if change self.logger.log_dir to self.trainer.log_dir, the training will stuck on multi-gpu training
+                tag_and_log_git_status(self.logger.log_dir + '/git.out', self.logger.version, self.hparams.exp_name, model_name='NBSS')
+
+            if self.trainer.is_global_zero and hasattr(self.logger, 'log_dir'):
+                with open(self.logger.log_dir + '/model.txt', 'a') as f:
+                    f.write(str(self))
+                    f.write('\n\n\n')
 
     def training_step(self, batch, batch_idx):
         """如何使用一个mini-batch的数据得到train/loss。其他step同理。
@@ -97,7 +115,7 @@ class MyModel(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         loss = self.forward(batch).sum()
-        self.log("val/loss", loss)
+        self.log("val/loss", loss, sync_dist=True)  # 设置sync_dist=True，使得val/loss在多卡训练的时候能够同步，用于选择最佳的checkpoint等任务。train/loss不需要设置这个，因为训练步需要同步的是梯度，而不是指标，梯度会自动同步
 
     def test_step(self, batch, batch_idx):
         loss = self.forward(batch).sum()
