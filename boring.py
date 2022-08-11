@@ -94,11 +94,12 @@ class MyModel(LightningModule):
         """Called by PytorchLightning automatically at the start of training"""
         if self.current_epoch == 0:
             if self.trainer.is_global_zero and hasattr(self.logger, 'log_dir') and 'notag' not in self.hparams.exp_name:
-                # add git tags for better change tracking
+                # 在当前训练的程序代码树上添加Git标签，使得代码版本可以训练version对应起来。【注意先commit内容修改】
                 # note: if change self.logger.log_dir to self.trainer.log_dir, the training will stuck on multi-gpu training
-                tag_and_log_git_status(self.logger.log_dir + '/git.out', self.logger.version, self.hparams.exp_name, model_name='NBSS')
+                tag_and_log_git_status(self.logger.log_dir + '/git.out', self.logger.version, self.hparams.exp_name, model_name=type(self).__name__)
 
             if self.trainer.is_global_zero and hasattr(self.logger, 'log_dir'):
+                # 输出模型到 model.txt
                 with open(self.logger.log_dir + '/model.txt', 'a') as f:
                     f.write(str(self))
                     f.write('\n\n\n')
