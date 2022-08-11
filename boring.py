@@ -75,7 +75,9 @@ class MyArch(torch.nn.Module):
 
 
 class MyModel(LightningModule):
-    """LightningModule控制了模型训练的各个方面，即定义了如何使用一个mini-batch的数据进行训练、验证、测试、推理，以及训练使用的optimizer
+    """LightningModule控制了模型训练的各个方面，即定义了如何使用一个mini-batch的数据进行训练、验证、测试、推理，以及训练使用的optimizer。
+    
+    LightningModule内部具有特定名字的函数（如下面涉及的on_train_start、training_step等）会被lightning框架在函数名称对应的阶段自动调用。
     
     LightningModule的相关资料：https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html
     """
@@ -91,10 +93,9 @@ class MyModel(LightningModule):
         return self.arch(x)
 
     def on_train_start(self):
-        """Called by PytorchLightning automatically at the start of training"""
         if self.current_epoch == 0:
             if self.trainer.is_global_zero and hasattr(self.logger, 'log_dir') and 'notag' not in self.hparams.exp_name:
-                # 在当前训练的程序代码树上添加Git标签，使得代码版本可以训练version对应起来。【注意先commit内容修改】
+                # 在当前训练的程序代码树上添加Git标签，使得代码版本可以与训练version对应起来。【注意先commit内容修改，然后再训练。测试的时候exp_name设置为notag】
                 # note: if change self.logger.log_dir to self.trainer.log_dir, the training will stuck on multi-gpu training
                 tag_and_log_git_status(self.logger.log_dir + '/git.out', self.logger.version, self.hparams.exp_name, model_name=type(self).__name__)
 
