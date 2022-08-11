@@ -47,13 +47,13 @@ class MyDataModule(LightningDataModule):
         super().__init__()
         self.input_size = input_size
         self.num_workers = num_workers
-        self.batch_size = batch_size
+        self.batch_size = batch_size # train: batch_size[0]; test: batch_size[1]
 
     def prepare_data(self) -> None:
         return super().prepare_data()
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(RandomDataset(self.input_size, 640), batch_size=self.batch_size[0], num_workers=self.num_workers)
+        return DataLoader(RandomDataset(self.input_size, 640), batch_size=self.batch_size[0], num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(RandomDataset(self.input_size, 640), batch_size=self.batch_size[1], num_workers=self.num_workers)
