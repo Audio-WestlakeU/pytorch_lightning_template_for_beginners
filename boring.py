@@ -1,9 +1,17 @@
 import os
+
+os.environ['TORCH_CUDNN_V8_API_ENABLED'] = '1'  # 允许使用BF16精度进行训练。enable bf16 precision in pytorch 1.12, see https://github.com/Lightning-AI/lightning/issues/11933#issuecomment-1181590004
+os.environ["OMP_NUM_THREADS"] = str(8)  # 限制进程数量，放在import torch和numpy之前。不加会导致程序占用特别多的CPU资源，使得服务器变卡。limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
+
 from typing import Tuple
 
-os.environ["OMP_NUM_THREADS"] = str(8)  # limit the threads to reduce cpu usage, will speed up when there are lots of CPU cores on the running machine
-
 import torch
+
+# torch 1.12开始，TF32默认关闭，下面的参数会打开TF32。对于A100，使用TF32会使得速度得到很大的提升，同时不影响训练结果【或轻微影响】。
+torch.backends.cuda.matmul.allow_tf32 = True  # The flag below controls whether to allow TF32 on matmul. This flag defaults to False in PyTorch 1.12 and later.
+torch.backends.cudnn.allow_tf32 = True  # The flag below controls whether to allow TF32 on cuDNN. This flag defaults to True.
+# torch.set_float32_matmul_precision('medium')
+
 from jsonargparse import lazy_instance
 from pytorch_lightning import LightningDataModule, LightningModule
 from pytorch_lightning.utilities.cli import (LightningArgumentParser, LightningCLI)
@@ -146,7 +154,7 @@ class MyCLI(LightningCLI):
         })
 
     def before_fit(self):
-        # 训练开始前，会被执行。下面代码的功能是如果是从last.ckpt恢复训练，则输出到同一个目录（version_x）;否则，输出到logs/{model_name}
+        # 训练开始前，会被执行。下面代码的功能是如果是从last.ckpt恢复训练，则输出到同一个目录（如version_10）;否则，输出到logs/{model_name}/version_NEW
         resume_from_checkpoint: str = self.config['fit']['ckpt_path']
         if resume_from_checkpoint is not None and resume_from_checkpoint.endswith('last.ckpt'):
             # 如果是从last.ckpt恢复训练，则输出到同一个目录
@@ -157,7 +165,7 @@ class MyCLI(LightningCLI):
             save_dir = os.path.sep.join(splits[:-3])
             self.trainer.logger = TensorBoardLogger(save_dir=save_dir, name="", version=version, default_hp_metric=False)
         else:
-            model_name = str(self.model_class).split('\'')[1].split('.')[-1]
+            model_name = type(self.model).__name__
             self.trainer.logger = TensorBoardLogger('logs/', name=model_name, default_hp_metric=False)
 
     def before_test(self):
