@@ -47,7 +47,7 @@ class MyDataModule(LightningDataModule):
         super().__init__()
         self.input_size = input_size
         self.num_workers = num_workers
-        self.batch_size = batch_size # train: batch_size[0]; test: batch_size[1]
+        self.batch_size = batch_size  # train: batch_size[0]; test: batch_size[1]
 
     def prepare_data(self) -> None:
         return super().prepare_data()
@@ -172,6 +172,11 @@ class MyCLI(LightningCLI):
                 "width": 200,  # 设置足够的宽度，防止将进度条分成两行
             }
         })
+
+        # 设置profiler寻找代码最耗时的位置。去除下面的注释把profiler打开
+        # from pytorch_lightning.profiler import SimpleProfiler, AdvancedProfiler
+        # parser.set_defaults({"trainer.profiler": lazy_instance(AdvancedProfiler, filename="profiler")})
+        # parser.set_defaults({"trainer.max_epochs": 1, "trainer.limit_train_batches": 100, "trainer.limit_val_batches": 100})
 
     def before_fit(self):
         # 训练开始前，会被执行。下面代码的功能是如果是从last.ckpt恢复训练，则输出到同一个目录（如version_10）;否则，输出到logs/{model_name}/version_NEW
