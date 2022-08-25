@@ -222,4 +222,10 @@ class MyCLI(LightningCLI):
 
 
 if __name__ == '__main__':
-    cli = MyCLI(MyModel, MyDataModule, seed_everything_default=None, save_config_overwrite=True, parser_kwargs={"parser_mode": "omegaconf"})
+    cli = MyCLI(
+        MyModel,
+        MyDataModule,
+        seed_everything_default=2, # 可以修改为自己想要的值
+        save_config_overwrite=True,
+        parser_kwargs={"parser_mode": "omegaconf"},
+    )

@@ -7,19 +7,42 @@ pip install -r requirements.txt
 ```
 
 # 生成配置文件
+命令行运行以下指令会生成配置文件`boring.yaml`.
 ```
-python boring.py fit --print_config=skip_null > boring.yaml
+python boring.py fit --print_config > boring.yaml
+```
+配置文件主要包含：
+```
+seed_everything: 2 # 此处2是自己给定的随机数种子
+ckpt_path: null # null表示从头开始训练，给定checkpoint的时候表示从checkpoint开始训练
+trainer:
+  # trainer的参数，如：
+  gpus: 1,
+  max_epochs: 100
+model:
+  # 模型的参数，对应代码里面的MyModule。如：
+  arch:
+    ...
+  exp_name: exp
+data:
+  # 数据集的参数，对应代码里面的MyDataModule。如：
+  batch_size:
+    - 1
+    - 2
+# 此处省略了其他配置，如checkpoint保存，EarlyStopping也在这个配置文件里面
 ```
 
 # 训练
+命令行运行以下指令会使用生成的配置文件`boring.yaml`来进行训练（fit）。
 ```
 python boring.py fit --config boring.yaml --data.batch_size=[24,48]
 ```
+其中`--data.batch_size=[24,48]`会修改配置文件里面的`data`部分的`batch_size`为`[24,48]`（24是训练集的batch size，48是验证集的）。配置文件里面其他的参数，如`trainer.gpus`，都可以通过这种方式来修改，如`--trainer.gpus=2,`（表示使用2号卡，不要忘记在卡号后面加逗号，不加会被认为使用2张卡训练，而非2号卡）。
 
 ## GPU训练
-多卡采用DDP模式训练时，需要保持batch_size一致。下面的例子的训练时的batch size = 4 * 2 * 3，其中4是train dataloader的batch size，2是累计的梯度数目，3是gpu的数目。
+多卡采用DDP模式训练时，注意保持不同实验间的batch_size一致。下面的例子的训练时总的batch size = 4 * 3，其中4是train dataloader的batch size，3是gpu的数目。
 ```
-python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.accumulate_grad_batches=2 --trainer.gpus=0,1,3
+python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.gpus=0,1,3
 ```
 
 
