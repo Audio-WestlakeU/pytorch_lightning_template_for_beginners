@@ -14,6 +14,7 @@ import yaml
 from argparse import ArgumentParser
 import gpustat
 
+
 def send_mail(email: str, subject: str, content: str):
     # 第三方 SMTP 服务
     mail_host = "smtp.163.com"  #设置服务器
@@ -75,15 +76,17 @@ def get_free_gpus(gpu_info: Dict[str, Dict[str, Any]], valid_gpus: Set[str]) -> 
     return list(free_gpus)
 
 
-last_msg = ""
+last_msgs = []
 
 
-def log(msg: str):
-    global last_msg
+def log(msg: str, max_history: int = 10):
+    global last_msgs
     # 去除重复的log
-    if msg != last_msg:
+    if msg not in last_msgs:
         print(msg)
-        last_msg = msg
+        last_msgs.append(msg)
+    if len(last_msgs) > max_history:
+        del last_msgs[0]
 
 
 def read_tasks(task_dir: str = "tasks") -> List[Dict[str, Any]]:
@@ -103,7 +106,7 @@ def read_tasks(task_dir: str = "tasks") -> List[Dict[str, Any]]:
     task_files.sort()  # 按照名称排序
     tasks = []
     for task_file in task_files:
-        if task_file == "template.yaml":
+        if task_file.startswith("template"):
             continue
         with open(join(task_dir, task_file), 'r') as f:
             if exists(join(task_dir, "started", task_file)):
@@ -176,6 +179,16 @@ def get_who_am_i() -> str:
     return obj.stdout.read().replace('\n', '')  # type:ignore
 
 
+def new_task_added(old_tasks: List[Dict[str, Any]], new_tasks: List[Dict[str, Any]]) -> bool:
+    old_task_ids = [task['task_file'] for task in old_tasks]
+    new_task_ids = [task['task_file'] for task in new_tasks]
+    added = set(new_task_ids) - set(old_task_ids)
+    if len(added) > 0:
+        return True
+    else:
+        return False
+
+
 if __name__ == "__main__":
     # 示例： run_tasks.py --gpus 0 1 2 3 --email=quancs@qq.com --email_task_started --email_task_list_empty --email_task_all_ended --endless
     parser = ArgumentParser()
@@ -207,13 +220,10 @@ if __name__ == "__main__":
     seed_email_for_task_all_ended_already = False
 
     while True:
-        # 读取全部GPU的信息
-        host_name, gpu_info = get_gpu_usage_info()
-        # 查看配置的GPU中哪些GPU是空闲的
-        free_gpus = get_free_gpus(gpu_info=gpu_info, valid_gpus=gpus)
         # 读取全部的任务
         tasks = read_tasks(task_dir=task_dir)
         at_least_one_task_fail = False
+        at_least_one_new_task_added = False
 
         if len(tasks) > 0:
             # 当存在任务的时候，就重置标志，使得下次任务完的时候可以继续发送邮件
@@ -235,7 +245,12 @@ if __name__ == "__main__":
                 )
                 if suc == False:
                     at_least_one_task_fail = True
-                time.sleep(10)  # 隔10秒再次检查
+
+                # 判断是否出现了新任务
+                new_tasks = read_tasks(task_dir=task_dir)
+                if new_task_added(tasks, new_tasks):
+                    at_least_one_new_task_added = True
+                    break  # 退出接下来的任务执行，因为新任务的优先级可能会比现有的没有运行的任务都高
 
         # 重新获取那些信息
         host_name, gpu_info = get_gpu_usage_info()
@@ -265,7 +280,7 @@ if __name__ == "__main__":
                     log(f"任务列表文件夹{args.task_dir}已空，给定GPU {str(gpus)} 全部空闲，在服务器{ip}上配置的任务已经全部结束")
 
         # 非无限循环，则退出
-        if not args.endless and at_least_one_task_fail == False:
+        if not args.endless and at_least_one_task_fail == False and at_least_one_new_task_added == False:
             print("\n结束")
             break
         time.sleep(10)  # 隔10秒再次检查
