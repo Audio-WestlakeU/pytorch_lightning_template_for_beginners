@@ -59,17 +59,24 @@ python boring.py test --config logs/MyModel/version_x/config.yaml --ckpt_path lo
 ```
 
 # 批量训练
-批量训练功能会不断地读取`tasks`目录下的任务，当任务启动要求满足时会使用`nohup`指令启动任务（任务配置参考`tasks/template.yaml`）。任务启动完成之后，任务配置文件会被移动到`tasks/started`目录下，任务输出会被保存为`tasks/started`目录下同名的log文件。**注意事项**：不要让`run_tasks.py`停止运行（可以在byobu里面运行，或者使用nohup指令运行）。
+批量训练功能会不断地读取`tasks`目录下的任务，当任务启动要求满足时会使用`nohup`指令启动任务（任务配置参考`tasks/template.yaml`）。任务启动完成之后，任务配置文件会被移动到`tasks/started`目录下，任务输出会被保存为`tasks/started`目录下同名的log文件。任务结束之后，任务配置文件和log文件会被移动到`tasks/done`目录下。**注意事项**：不要让`run_tasks.py`停止运行（可以在byobu里面运行，或者使用nohup指令运行）。
 
-**安装**: 只使用`批量训练`功能时，可以不安装`requirements.txt`中的依赖。只需安装`pip install gpustat`。
+**安装**: 只使用`批量训练`功能时，只需安装`pip install gpustat`。
 
 **批量训练**：可以使用`run_tasks.py`:
 ```shell
-python run_tasks.py --gpus 0 1 2 3 --email=zhangsan@qq.com --email_task_started --email_task_list_empty --email_task_all_ended --endless
+python run_tasks.py --gpus 0 1 2 3 --email=zhangsan@qq.com --email_task_started --email_task_ended --email_task_list_empty --email_task_all_ended --endless
 ```
 
 
-**参数**：`--gpus` 需要监控的GPU编号；`--email`：通知邮箱；`--email_task_started`：给定这个参数时，任务启动时会邮件通知；`--email_task_list_empty`：给定这个参数时，任务列表为空时会邮件通知；`--email_task_all_ended`：给定这个参数时，任务全部结束时会邮件通知；`--endless`：是否无限循环。
+**参数**：  
+`--gpus`：需要监控的GPU编号  
+`--email`：通知邮箱，网易邮箱和QQ邮箱已经过测试，其他邮箱不确定。  
+`--email_task_started`：给定这个参数时，任务启动时会邮件通知  
+`--email_task_ended`：给定这个参数时，任务结束时会邮件通知  
+`--email_task_list_empty`：给定这个参数时，任务列表为空时会邮件通知。建议指定这个参数，任务列表为空时正好有一段时间可以安排下一波任务。  
+`--email_task_all_ended`：给定这个参数时，任务全部结束时会邮件通知。全部结束指的是给定的GPU全部空闲【空闲指的是没有当前的用户的任务在跑】。  
+`--endless`：是否无限循环  
 
 **自定义**：如果觉得配置文件比较麻烦，可以直接修改`run_tasks.py`中的`read_tasks`方法，实现自己的需求。
 

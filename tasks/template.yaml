@@ -7,5 +7,6 @@
 exp_name: 测试5
 require:
   num_gpus: 3
-  time_needed_to_start_completely: 60 # 执行任务的命令启动之后，需要多少秒才能占领GPU，防止GPU被错误判定为空闲状态
+  time_needed_to_start_completely: 60 # 执行任务的命令启动之后，需要多少秒才能占领GPU，防止GPU被错误判定为空闲状态，默认60秒。
+  time_needed_to_end_completely: 600 # log文件多久不被修改就认为训练过程结束。默认600秒，即10分钟。
 cmd: echo {exp_name} {gpus} {task_file_name} # {exp_name}， {gpus}， {task_file_name}会被替换成对应的值，如："测试5"、"0,1,2,"、"100.yaml"。如果不需要这些参数作为命令，则可以去掉
