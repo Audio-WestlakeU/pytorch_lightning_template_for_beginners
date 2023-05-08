@@ -264,5 +264,5 @@ if __name__ == '__main__':
         seed_everything_default=2,  # 可以修改为自己想要的值
         save_config_callback=SaveConfigCallback,
         save_config_kwargs={'overwrite': True},
-        parser_kwargs={"parser_mode": "omegaconf"},
+        # parser_kwargs={"parser_mode": "omegaconf"},
     )
