@@ -1,8 +1,8 @@
 import sys
-from typing import Set
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import RichProgressBar
+from pytorch_lightning.callbacks.progress.rich_progress import *
 from torch import Tensor
 
 
@@ -10,14 +10,14 @@ class MyRichProgressBar(RichProgressBar):
     """A progress bar prints metrics at the end of each epoch
     """
 
-    def on_validation_epoch_end(self, trainer: Trainer, pl_module):
-        super().on_validation_epoch_end(trainer, pl_module)
+    def on_validation_end(self, trainer: Trainer, pl_module):
+        super().on_validation_end(trainer, pl_module)
         sys.stdout.flush()
         if trainer.is_global_zero:
             metrics = trainer.logged_metrics
             infos = f"Epoch {trainer.current_epoch} metrics: "
             for k, v in metrics.items():
-                if not k.startswith('val/'):
+                if k.startswith('train/'):
                     continue
                 value = v
                 if isinstance(v, Tensor):

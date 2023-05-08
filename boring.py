@@ -7,7 +7,7 @@ os.environ["OMP_NUM_THREADS"] = str(8)  # 限制进程数量，放在import torc
 from typing import Tuple
 
 import torch
-
+from torch import Tensor
 # torch 1.12开始，TF32默认关闭，下面的参数会打开TF32。对于A100，使用TF32会使得速度得到很大的提升，同时不影响训练结果【或轻微影响】。
 torch.backends.cuda.matmul.allow_tf32 = True  # The flag below controls whether to allow TF32 on matmul. This flag defaults to False in PyTorch 1.12 and later.
 torch.backends.cudnn.allow_tf32 = True  # The flag below controls whether to allow TF32 on cuDNN. This flag defaults to True.
@@ -15,21 +15,24 @@ torch.backends.cudnn.allow_tf32 = True  # The flag below controls whether to all
 
 from jsonargparse import lazy_instance
 from pytorch_lightning import LightningDataModule, LightningModule
-from pytorch_lightning.utilities.cli import (LightningArgumentParser, LightningCLI)
+from pytorch_lightning.cli import LightningArgumentParser, LightningCLI
 from torch.utils.data import DataLoader, Dataset
+from packaging.version import Version
 
 from utils import MyRichProgressBar as RichProgressBar
 from utils import MyLogger as TensorBoardLogger
 from utils import tag_and_log_git_status
+from utils.my_save_config_callback import MySaveConfigCallback as SaveConfigCallback
+from utils.flops import write_FLOPs
 
 
 class RandomDataset(Dataset):
     """一个随机数组成的数据集，此处用于展示其他模块的功能
     """
 
-    def __init__(self, size, length):
+    def __init__(self, length, size: list[int]):
         self.len = length
-        self.data = torch.randn(length, size)
+        self.data = torch.randn(length, *size)
 
     def __getitem__(self, index):
         return self.data[index]
@@ -43,9 +46,9 @@ class MyDataModule(LightningDataModule):
     LightningDataModule相关资料：https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.core.LightningDataModule.html
     """
 
-    def __init__(self, input_size: int = 10, num_workers: int = 5, batch_size: Tuple[int, int] = (2, 4)):
+    def __init__(self, input_size: list[int] = [8, 16000 * 4], num_workers: int = 5, batch_size: Tuple[int, int] = (2, 4)):
         super().__init__()
-        self.input_size = input_size
+        self.input_size = input_size  # 8通道4s采样率16000Hz的语音
         self.num_workers = num_workers
         self.batch_size = batch_size  # train: batch_size[0]; test: batch_size[1]
 
@@ -53,25 +56,25 @@ class MyDataModule(LightningDataModule):
         return super().prepare_data()
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(RandomDataset(self.input_size, 640), batch_size=self.batch_size[0], num_workers=self.num_workers, shuffle=True)
+        return DataLoader(RandomDataset(640, self.input_size), batch_size=self.batch_size[0], num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(RandomDataset(self.input_size, 640), batch_size=self.batch_size[1], num_workers=self.num_workers)
+        return DataLoader(RandomDataset(640, self.input_size), batch_size=self.batch_size[1], num_workers=self.num_workers)
 
     def test_dataloader(self) -> DataLoader:
-        return DataLoader(RandomDataset(self.input_size, 640), batch_size=1, num_workers=self.num_workers)
+        return DataLoader(RandomDataset(640, self.input_size), batch_size=1, num_workers=self.num_workers)
 
 
 class MyArch(torch.nn.Module):
-    """这个类定义了网络结构，此处是Linear。也可以将网络结构写到LightningModule里面。
+    """这个类定义了网络结构，此处是Conv1d。也可以将网络结构写到LightningModule里面。
     """
 
-    def __init__(self, input_size: int = 10, output_size: int = 2) -> None:
+    def __init__(self, input_size: int = 8, output_size: int = 2) -> None:
         super().__init__()
-        self.linear = torch.nn.Linear(input_size, output_size)
+        self.conv = torch.nn.Conv1d(in_channels=input_size, out_channels=output_size, kernel_size=5)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.linear.forward(x)
+        return self.conv.forward(x)
 
 
 class MyModel(LightningModule):
@@ -82,9 +85,13 @@ class MyModel(LightningModule):
     LightningModule的相关资料：https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html
     """
 
-    def __init__(self, arch: MyArch = lazy_instance(MyArch), exp_name: str = "exp"):
+    def __init__(self, arch: MyArch = lazy_instance(MyArch), exp_name: str = "exp", compile: bool = False):
         super().__init__()
-        self.arch = arch
+        if compile:
+            assert Version(torch.__version__) >= Version('2.0.0'), torch.__version__
+            self.arch = torch.compile(arch)  # pytorch 2.0 新出的compile功能，编译完成之后的模型速度更快
+        else:
+            self.arch = arch
 
         # save all the parameters to self.hparams
         self.save_hyperparameters(ignore=['arch'])
@@ -104,27 +111,47 @@ class MyModel(LightningModule):
                 with open(self.logger.log_dir + '/model.txt', 'a') as f:
                     f.write(str(self))
                     f.write('\n\n\n')
+                # measure the model FLOPs
+                write_FLOPs(model=self, save_dir=self.logger.log_dir, num_chns=8, fs=16000, audio_time_len=4, model_file=__file__)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: Tensor, batch_idx: int):
         """如何使用一个mini-batch的数据得到train/loss。其他step同理。
 
         Args:
             batch: train DataLoader给出一个mini-batch的数据
         """
-        loss = self.forward(batch).sum()
+        preds = self.forward(batch)
+        loss = preds.sum()
         self.log("train/loss", loss)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        loss = self.forward(batch).sum()
+    def validation_step(self, batch: Tensor, batch_idx: int):
+        preds = self.forward(batch)
+        loss = preds.sum()
         self.log("val/loss", loss, sync_dist=True)  # 设置sync_dist=True，使得val/loss在多卡训练的时候能够同步，用于选择最佳的checkpoint等任务。train/loss不需要设置这个，因为训练步需要同步的是梯度，而不是指标，梯度会自动同步
 
-    def test_step(self, batch, batch_idx):
-        loss = self.forward(batch).sum()
+    def test_step(self, batch: Tensor, batch_idx: int):
+        preds = self.forward(batch)
+        loss = preds.sum()
         self.log("test/loss", loss)
 
+    def predict_step(self, batch: Tensor, batch_idx: int):
+        preds = self.forward(batch)
+        return preds
+
     def configure_optimizers(self):
-        return torch.optim.SGD(self.arch.parameters(), lr=0.1)
+        optimizer = torch.optim.SGD(self.arch.parameters(), lr=0.1)
+        # 不需要学习率调整
+        # return optimizer
+        # 需要调整学习率
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=5, cooldown=5)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': lr_scheduler,
+                'monitor': 'val/loss',
+            }
+        }
 
 
 class MyCLI(LightningCLI):
@@ -137,9 +164,11 @@ class MyCLI(LightningCLI):
         """添加、设置默认的参数，需要使用的callback（此处callback的意思是在LightningModule各个step函数开始执行、结束执行等时机想要被调用的具有特殊功能的函数，这些函数被封装到了不同的callbacks类里面，如EarlyStopping、ModelCheckpoint）。  
         callback的相关资料: https://pytorch-lightning.readthedocs.io/en/stable/extensions/callbacks.html
         """
-        from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+        from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 
         parser.set_defaults({"trainer.strategy": "ddp_find_unused_parameters_false"})
+        parser.set_defaults({"trainer.accelerator": "gpu"})
+        # parser.set_defaults({"trainer.gradient_clip_val": 5, "trainer.gradient_clip_algorithm":"norm"})
 
         # 添加早停策略默认参数
         parser.add_lightning_class_args(EarlyStopping, "early_stopping")
@@ -172,6 +201,13 @@ class MyCLI(LightningCLI):
                 "width": 200,  # 设置足够的宽度，防止将进度条分成两行
             }
         })
+
+        # LearningRateMonitor
+        parser.add_lightning_class_args(LearningRateMonitor, "learning_rate_monitor")
+        learning_rate_monitor_defaults = {
+            "learning_rate_monitor.logging_interval": "epoch",
+        }
+        parser.set_defaults(learning_rate_monitor_defaults)
 
         # 设置profiler寻找代码最耗时的位置。去除下面的注释把profiler打开
         # from pytorch_lightning.profiler import SimpleProfiler, AdvancedProfiler
@@ -225,7 +261,8 @@ if __name__ == '__main__':
     cli = MyCLI(
         MyModel,
         MyDataModule,
-        seed_everything_default=2, # 可以修改为自己想要的值
-        save_config_overwrite=True,
+        seed_everything_default=2,  # 可以修改为自己想要的值
+        save_config_callback=SaveConfigCallback,
+        save_config_kwargs={'overwrite': True},
         parser_kwargs={"parser_mode": "omegaconf"},
     )

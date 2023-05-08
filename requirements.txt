@@ -4,3 +4,4 @@ omegaconf
 pytorch-lightning
 torch>=1.10.0
 rich
+torcheval
