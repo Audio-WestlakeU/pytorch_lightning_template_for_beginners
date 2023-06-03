@@ -4,18 +4,19 @@ os.environ['TORCH_CUDNN_V8_API_ENABLED'] = '1'  # 允许使用BF16精度进行�
 os.environ["OMP_NUM_THREADS"] = str(8)  # 限制进程数量，放在import torch和numpy之前。不加会导致程序占用特别多的CPU资源，使得服务器变卡。
 # limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
 
-from typing import Tuple
+from typing import *
 
 import torch
 from torch import Tensor
 # torch 1.12开始，TF32默认关闭，下面的参数会打开TF32。对于A100，使用TF32会使得速度得到很大的提升，同时不影响训练结果【或轻微影响】。
 torch.backends.cuda.matmul.allow_tf32 = True  # The flag below controls whether to allow TF32 on matmul. This flag defaults to False in PyTorch 1.12 and later.
 torch.backends.cudnn.allow_tf32 = True  # The flag below controls whether to allow TF32 on cuDNN. This flag defaults to True.
-# torch.set_float32_matmul_precision('medium')
+torch.set_float32_matmul_precision('high')
 
 from jsonargparse import lazy_instance
 from pytorch_lightning import LightningDataModule, LightningModule
 from pytorch_lightning.cli import LightningArgumentParser, LightningCLI
+from pytorch_lightning.utilities.rank_zero import rank_zero_info
 from torch.utils.data import DataLoader, Dataset
 from packaging.version import Version
 
@@ -87,9 +88,16 @@ class MyModel(LightningModule):
 
     def __init__(self, arch: MyArch = lazy_instance(MyArch), exp_name: str = "exp", compile: bool = False):
         super().__init__()
-        if compile:
+        if compile != False:
+            assert compile is True or compile == 'disable', compile
             assert Version(torch.__version__) >= Version('2.0.0'), torch.__version__
-            self.arch = torch.compile(arch)  # pytorch 2.0 新出的compile功能，编译完成之后的模型速度更快
+            if compile == 'disable':
+                rank_zero_info('compile is disabled for testing with dynamic shape')
+            # pytorch 2.0 新出的compile功能，编译完成之后的模型速度更快
+            # 目前compile对于动态输入（如变长）的支持还不够好，后期功能稳定之后可以给dynamic=True
+            # dynamic=False的情况下，如果输入的shape会不断变化，如语音长度不定，会不断触发编译，导致速度极度下降。
+            # 因此要么训练集和验证集定长（测试集可以等训练完成之后，compile给disable），要么训练的时候不用compile
+            self.arch = torch.compile(arch, disable=True if compile == 'disable' else False)
         else:
             self.arch = arch
 
@@ -98,6 +106,17 @@ class MyModel(LightningModule):
 
     def forward(self, x):
         return self.arch(x)
+
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        # 因为目前compile的模型，在测试时如果存在变长，需要设置compile=disable，这个时候模型参数的加载需要去除掉参数名里面的_orig_mod
+        if self.compile == 'disable':
+            # load weights for case compile==disable from compiled checkpoint
+            state_dict = checkpoint['state_dict']
+            state_dict_new = dict()
+            for k, v, in state_dict.items():
+                state_dict_new[k.replace('_orig_mod.', '')] = v  # rename weights to remove _orig_mod in name
+            checkpoint['state_dict'] = state_dict_new
+        return super().on_load_checkpoint(checkpoint)
 
     def on_train_start(self):
         if self.current_epoch == 0:
