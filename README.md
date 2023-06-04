@@ -53,7 +53,7 @@ python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.devi
 ```
 python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.devices=0,1,3 --trainer.precision=bf16-mixed
 ```
-一般而言，使用混合精度训练时，训练速度会有较大的提升，但模型性能会有一定程度的下降。
+一般而言，使用混合精度训练时，训练速度会有较大的提升，模型性能会有轻微下降。
 
 ## 恢复训练
 恢复训练时，使用对应version的配置文件，以及对应的checkpoint
