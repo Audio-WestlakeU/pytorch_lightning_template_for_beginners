@@ -108,9 +108,9 @@ class MyModel(LightningModule):
         return self.arch(x)
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        # 因为目前compile的模型，在测试时如果存在变长，需要设置compile=disable，这个时候模型参数的加载需要去除掉参数名里面的_orig_mod
-        if self.compile == 'disable':
-            # load weights for case compile==disable from compiled checkpoint
+        # 因为目前compile的模型，在测试时如果存在变长，需要设置compile=disable/False，这个时候模型参数的加载需要去除掉参数名里面的_orig_mod
+        if self.compile == 'disable' or self.compile is False:
+            # load weights for case compile==disable/False from compiled checkpoint
             state_dict = checkpoint['state_dict']
             state_dict_new = dict()
             for k, v, in state_dict.items():
