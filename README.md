@@ -17,7 +17,7 @@ seed_everything: 2 # 此处2是自己给定的随机数种子
 ckpt_path: null # null表示从头开始训练，给定checkpoint的时候表示从checkpoint开始训练
 trainer:
   # trainer的参数，如：
-  gpus: 1,
+  devices: 1,
   max_epochs: 100
 model:
   # 模型的参数，对应代码里面的MyModule。如：
@@ -37,25 +37,34 @@ data:
 ```
 python boring.py fit --config boring.yaml --data.batch_size=[24,48]
 ```
-其中`--data.batch_size=[24,48]`会修改配置文件里面的`data`部分的`batch_size`为`[24,48]`（24是训练集的batch size，48是验证集的）。配置文件里面其他的参数，如`trainer.gpus`，都可以通过这种方式来修改，如`--trainer.gpus=2,`（表示使用2号卡，不要忘记在卡号后面加逗号，不加会被认为使用2张卡训练，而非2号卡）。
+其中`--data.batch_size=[24,48]`会修改配置文件里面的`data`部分的`batch_size`为`[24,48]`（24是训练集的batch size，48是验证集的）。配置文件里面其他的参数，如`trainer.devices`，都可以通过这种方式来修改，如`--trainer.devices=2,`（表示使用2号卡，不要忘记在卡号后面加逗号，不加会被认为使用2张卡训练，而非2号卡）。
 
 ## GPU训练
 多卡采用DDP模式训练时，注意保持不同实验间的batch_size一致。下面的例子的训练时总的batch size = 4 * 3，其中4是train dataloader的batch size，3是gpu的数目。
 ```
-python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.gpus=0,1,3
+python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.devices=0,1,3
 ```
-
+### 混合精度训练
+上面的例子，使用FP16混合精度训练：
+```
+python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.devices=0,1,3 --trainer.precision=16-mixed
+```
+使用BF16混合精度训练：
+```
+python boring.py fit --config boring.yaml --data.batch_size=[4,8] --trainer.devices=0,1,3 --trainer.precision=bf16-mixed
+```
+一般而言，使用混合精度训练时，训练速度会有较大的提升，但模型性能会有一定程度的下降。
 
 ## 恢复训练
 恢复训练时，使用对应version的配置文件，以及对应的checkpoint
 ```
-python boring.py fit --config logs/MyModel/version_x/config.yaml --ckpt_path logs/MyModel/version_x/checkpoints/last.ckpt
+python boring.py fit --config logs/MyModel/version_x/config.yaml --ckpt_path logs/MyModel/version_x/checkpoints/last.ckpt --trainer.devices=0,1,3
 ```
 
 # 测试
 测试时，使用训练时使用的配置文件，以及想要测试的checkpoint
 ```
-python boring.py test --config logs/MyModel/version_x/config.yaml --ckpt_path logs/MyModel/version_x/checkpoints/epoch2_valid_loss-1576.2192.ckpt
+python boring.py test --config logs/MyModel/version_x/config.yaml --ckpt_path logs/MyModel/version_x/checkpoints/epoch2_valid_loss-1576.2192.ckpt --trainer.devices=0,1,3
 ```
 
 # 批量训练
