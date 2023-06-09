@@ -140,26 +140,57 @@ class MyModel(LightningModule):
             batch: train DataLoader给出一个mini-batch的数据
         """
         preds = self.forward(batch)
-        loss = preds.sum()
+
+        if self.trainer.precision == '16-mixed' or self.trainer.precision == 'bf16-mixed':
+            # 启用半精度训练的时候，某些loss函数可能需要开启32精度来计算
+            with torch.autocast(device_type=self.device.type, dtype=torch.float32):
+                loss = preds.sum()  # convert to float32 to avoid numerical problem in loss calculation
+        else:
+            loss = preds.sum()
+
         self.log("train/loss", loss)
         return loss
 
     def validation_step(self, batch: Tensor, batch_idx: int):
+        if self.trainer.precision == '16-mixed' or self.trainer.precision == 'bf16-mixed':
+            # 在validation_step和test_step里面，临时启用32精度
+            autocast = torch.autocast(device_type=self.device.type, dtype=torch.float32)
+            autocast.__enter__()
+
         preds = self.forward(batch)
         loss = preds.sum()
         self.log("val/loss", loss, sync_dist=True)  # 设置sync_dist=True，使得val/loss在多卡训练的时候能够同步，用于选择最佳的checkpoint等任务。train/loss不需要设置这个，因为训练步需要同步的是梯度，而不是指标，梯度会自动同步
 
+        if self.trainer.precision == '16-mixed' or self.trainer.precision == 'bf16-mixed':
+            autocast.__exit__(None, None, None)  # 关闭32精度
+
     def test_step(self, batch: Tensor, batch_idx: int):
+        if self.trainer.precision == '16-mixed' or self.trainer.precision == 'bf16-mixed':
+            # 在validation_step和test_step里面，临时启用32精度
+            autocast = torch.autocast(device_type=self.device.type, dtype=torch.float32)
+            autocast.__enter__()
+
         preds = self.forward(batch)
         loss = preds.sum()
         self.log("test/loss", loss)
+
+        if self.trainer.precision == '16-mixed' or self.trainer.precision == 'bf16-mixed':
+            autocast.__exit__(None, None, None)  # 关闭32精度
 
     def predict_step(self, batch: Tensor, batch_idx: int):
         preds = self.forward(batch)
         return preds
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.arch.parameters(), lr=0.1)
+        if self.trainer.precision == '16-mixed':
+            # according to https://discuss.pytorch.org/t/adam-half-precision-nans/1765
+            # 半精度（FP16）训练的时候，需要将优化器默认的eps从1e-8改为1e-4，因为1e-8在FP16表示下等于0
+            # 如果优化器没有eps参数则跳过
+            optimizer = torch.optim.Adam(self.arch.parameters(), lr=0.001, eps=1e-4)
+            rank_zero_info('setting the eps of Adam to 1e-4 for FP16 mixed precision training')
+        else:
+            optimizer = torch.optim.Adam(self.arch.parameters(), lr=0.001)
+
         # 不需要学习率调整
         # return optimizer
         # 需要调整学习率
