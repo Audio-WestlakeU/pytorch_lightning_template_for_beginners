@@ -1,7 +1,7 @@
 import os
 
 os.environ['TORCH_CUDNN_V8_API_ENABLED'] = '1'  # 允许使用BF16精度进行训练。enable bf16 precision in pytorch 1.12, see https://github.com/Lightning-AI/lightning/issues/11933#issuecomment-1181590004
-os.environ["OMP_NUM_THREADS"] = str(8)  # 限制进程数量，放在import torch和numpy之前。不加会导致程序占用特别多的CPU资源，使得服务器变卡。
+os.environ["OMP_NUM_THREADS"] = str(1)  # 限制进程数量，放在import torch和numpy之前。不加会导致程序占用特别多的CPU资源，使得服务器变卡。
 # limit the threads to reduce cpu overloads, will speed up when there are lots of CPU cores on the running machine
 
 from typing import *
