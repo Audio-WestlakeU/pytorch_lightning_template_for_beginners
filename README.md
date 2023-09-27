@@ -35,7 +35,7 @@ data:
 # 训练
 命令行运行以下指令会使用生成的配置文件`boring.yaml`来进行训练（fit）。
 ```
-python boring.py fit --config boring.yaml --data.batch_size=[24,48]
+python boring.py fit --config boring.yaml --data.batch_size=[24,48] --trainer.devices=0,
 ```
 其中`--data.batch_size=[24,48]`会修改配置文件里面的`data`部分的`batch_size`为`[24,48]`（24是训练集的batch size，48是验证集的）。配置文件里面其他的参数，如`trainer.devices`，都可以通过这种方式来修改，如`--trainer.devices=2,`（表示使用2号卡，不要忘记在卡号后面加逗号，不加会被认为使用2张卡训练，而非2号卡）。
 

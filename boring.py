@@ -31,7 +31,7 @@ class RandomDataset(Dataset):
     """一个随机数组成的数据集，此处用于展示其他模块的功能
     """
 
-    def __init__(self, length, size: list[int]):
+    def __init__(self, length, size: List[int]):
         self.len = length
         self.data = torch.randn(length, *size)
 
@@ -47,7 +47,7 @@ class MyDataModule(LightningDataModule):
     LightningDataModule相关资料：https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.core.LightningDataModule.html
     """
 
-    def __init__(self, input_size: list[int] = [8, 16000 * 4], num_workers: int = 5, batch_size: Tuple[int, int] = (2, 4)):
+    def __init__(self, input_size: List[int] = [8, 16000 * 4], num_workers: int = 5, batch_size: Tuple[int, int] = (2, 4)):
         super().__init__()
         self.input_size = input_size  # 8通道4s采样率16000Hz的语音
         self.num_workers = num_workers
@@ -131,7 +131,7 @@ class MyModel(LightningModule):
                     f.write(str(self))
                     f.write('\n\n\n')
                 # measure the model FLOPs
-                write_FLOPs(model=self, save_dir=self.logger.log_dir, num_chns=8, fs=16000, audio_time_len=4, model_file=__file__)
+                write_FLOPs(model=self, save_dir=self.logger.log_dir, num_chns=8, fs=16000, audio_time_len=4, model_import_path='boring.MyModel')
 
     def training_step(self, batch: Tensor, batch_idx: int):
         """如何使用一个mini-batch的数据得到train/loss。其他step同理。

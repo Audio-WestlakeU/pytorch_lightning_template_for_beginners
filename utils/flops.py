@@ -9,7 +9,6 @@ from argparse import ArgumentParser as Parser
 import traceback
 from typing import *
 
-
 class FakeModule(torch.nn.Module):
 
     def __init__(self, module: LightningModule) -> None:
@@ -110,11 +109,11 @@ def _test_FLOPs_from_config(save_dir: str, model_class_path: str, num_chns: int,
     _test_FLOPs(model, save_dir=save_dir, num_chns=num_chns, fs=fs, audio_time_len=audio_time_len, num_params=num_params)
 
 
-def write_FLOPs(model: LightningModule, save_dir: str, model_file: str, num_chns: int, fs: int = None, nfft: int = None, audio_time_len: int = 4):
+def write_FLOPs(model: LightningModule, save_dir: str, model_import_path: str, num_chns: int, fs: int = None, nfft: int = None, audio_time_len: int = 4):
     assert fs is not None or nfft is not None, (fs, nfft)
 
     if model.__class__.__module__.startswith('__main__'):
-        model_class = f"{model_file.replace('.py', '')}.{type(model).__name__}"
+        model_class = model_import_path
     else:
         model_class = f"{str(model.__class__.__module__)}.{type(model).__name__}"
 
