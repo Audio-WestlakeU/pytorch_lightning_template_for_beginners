@@ -1,5 +1,5 @@
 # 简介
-一套适合初学者的pytorch lightning代码框架，能够满足DL时需要用到的很多内容，如实验版本管理、配置文件管理、命令行解析、多卡训练、EarlyStopping策略、累计梯度、梯度clipping等等。
+一套适合初学者的pytorch lightning代码框架，能够满足DL时需要用到的很多内容，如实验版本管理、配置文件管理、命令行解析、多卡训练、EarlyStopping策略、累计梯度、梯度clipping等等。具体细节见`boring.py`。
 
 # 安装
 ```
